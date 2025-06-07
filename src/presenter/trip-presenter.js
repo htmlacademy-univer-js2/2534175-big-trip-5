@@ -1,65 +1,93 @@
-import {render, replace} from '../framework/render.js';
-import EventCreateView from '../view/event-create-view.js';
-import EventEditView from '../view/event-edit-view.js';
+import {render} from '../framework/render.js';
 import EventListView from '../view/event-list-view.js';
-import EventView from '../view/event-view.js';
 import TripSortView from '../view/trip-sort-view.js';
+import EmptyListView from '../view/empty-list-view.js';
+import {generateSortItems, SORT_TYPES} from '../mock/sort.js';
+import PointPresenter from './point-presenter.js';
 
 export default class TripPresenter {
-  eventListComponent = new EventListView();
+  #eventListComponent = new EventListView();
+  #tripContainer = null;
+  #pointsModel = null;
+  #pointPresenters = new Map();
+  #currentSortType = SORT_TYPES.PRICE;
+  #eventsListPoints = [];
 
   constructor({tripContainer, pointsModel}) {
-    this.tripContainer = tripContainer;
-    this.pointsModel = pointsModel;
+    this.#tripContainer = tripContainer;
+    this.#pointsModel = pointsModel;
   }
 
   init() {
-    this.eventsListPoints = [...this.pointsModel.getPoints()];
+    this.#eventsListPoints = [...this.#pointsModel.getPoints()];
 
-    render(new TripSortView(), this.tripContainer);
-    render(this.eventListComponent, this.tripContainer);
-    
-    // Точки
-    for (let i = 0; i < this.eventsListPoints.length; i++) {
-      this.#renderPoint(this.eventsListPoints[i]);
+    if (this.#eventsListPoints.length === 0) {
+      render(new EmptyListView(), this.#tripContainer);
+      return;
     }
+
+    this.#renderSort();
+    this.#renderList();
+  }
+
+  #renderSort() {
+    const sortItems = generateSortItems();
+    const sortComponent = new TripSortView(sortItems);
+    render(sortComponent, this.#tripContainer);
+  }
+
+  #renderList() {
+    render(this.#eventListComponent, this.#tripContainer);
+    this.#renderPoints();
+  }
+
+  #renderPoints() {
+    this.#pointPresenters.forEach((presenter) => presenter.destroy());
+    this.#pointPresenters.clear();
+
+    const sortedPoints = this.#getSortedPoints();
+    sortedPoints.forEach((point) => this.#renderPoint(point));
   }
 
   #renderPoint(point) {
-    const escKeyDownHandler = (evt) => {
-      if (evt.key === 'Escape') {
-        evt.preventDefault();
-        replaceFormToPoint();
-        document.removeEventListener('keydown', escKeyDownHandler);
-      }
-    };
-
-    const pointComponent = new EventView({
-      onEditClick: () => {
-        replacePointToForm();
-        document.addEventListener('keydown', escKeyDownHandler);
-      }
+    const pointPresenter = new PointPresenter({
+      container: this.#eventListComponent.element,
+      point,
+      onDataChange: this.#handlePointChange,
+      onModeChange: this.#handleModeChange
     });
 
-    const pointEditComponent = new EventEditView({
-      onFormSubmit: () => {
-        replaceFormToPoint();
-        document.removeEventListener('keydown', escKeyDownHandler);
-      },
-      onCancelClick: () => {
-        replaceFormToPoint();
-        document.removeEventListener('keydown', escKeyDownHandler);
-      }
-    });
+    pointPresenter.init();
+    this.#pointPresenters.set(point.id, pointPresenter);
+  }
 
-    function replacePointToForm() {
-      replace(pointEditComponent, pointComponent);
+  #handlePointChange = (updatedPoint) => {
+    this.#pointsModel.updatePoint(updatedPoint);
+    this.#eventsListPoints = this.#pointsModel.getPoints();
+    const presenter = this.#pointPresenters.get(updatedPoint.id);
+    presenter.init(updatedPoint);
+  };
+
+  #handleModeChange = () => {
+    this.#pointPresenters.forEach((presenter) => presenter.resetView());
+  };
+
+  #getSortedPoints() {
+    const points = [...this.#eventsListPoints];
+
+    switch (this.#currentSortType) {
+      case SORT_TYPES.DAY:
+        return points.sort((a, b) => new Date(a.dateFrom) - new Date(b.dateFrom));
+      case SORT_TYPES.TIME:
+        return points.sort((a, b) => {
+          const durationA = new Date(a.dateTo) - new Date(a.dateFrom);
+          const durationB = new Date(b.dateTo) - new Date(b.dateFrom);
+          return durationB - durationA;
+        });
+      case SORT_TYPES.PRICE:
+        return points.sort((a, b) => b.basePrice - a.basePrice);
+      default:
+        return points;
     }
-
-    function replaceFormToPoint() {
-      replace(pointComponent, pointEditComponent);
-    }
-
-    render(pointComponent, this.eventListComponent.element);
   }
 }
