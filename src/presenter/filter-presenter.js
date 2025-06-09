@@ -18,7 +18,7 @@ export default class FilterPresenter {
     const filterItems = generateFilterItems();
     this.#filterComponent = new TripFiltersView({
       filterItems,
-      currentFilter: this.#filtersModel.getFilter(),
+      currentFilter: this.#filtersModel.filter,
       onFilterChange: this.#handleFilterChange
     });
 
