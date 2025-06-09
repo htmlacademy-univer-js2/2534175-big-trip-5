@@ -5,6 +5,7 @@ export const UserAction = {
 };
 
 export const UpdateType = {
+  INIT: 'INIT',
   PATCH: 'PATCH',
   MINOR: 'MINOR',
   MAJOR: 'MAJOR'

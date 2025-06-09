@@ -1,15 +1,10 @@
-import {getRandomPoint} from '../mock/points.js';
-import {mockDestinations} from '../mock/destinations.js';
-import {mockOffers} from '../mock/offers.js';
 import {UpdateType} from '../const.js';
-
-const POINT_COUNT = 3;
 
 export class FiltersModel {
   #filter = 'everything';
   #observers = [];
 
-  getFilter() {
+  get filter() {
     return this.#filter;
   }
 
@@ -28,10 +23,38 @@ export class FiltersModel {
 }
 
 export default class PointModel {
-  #points = Array.from({length: POINT_COUNT}, getRandomPoint);
-  #destinations = mockDestinations;
-  #offers = mockOffers;
+  #points = [];
+  #destinations = [];
+  #offers = [];
   #observers = [];
+  #apiService = null;
+  #isLoading = true;
+
+  constructor({apiService}) {
+    this.#apiService = apiService;
+  }
+
+  get isLoading() {
+    return this.#isLoading;
+  }
+
+  async init() {
+    try {
+      const data = await this.#apiService.init();
+      this.#points = data.points.map(this.#adaptToClient);
+      this.#destinations = data.destinations;
+      this.#offers = data.offers;
+      this.#isLoading = false;
+    } catch(err) {
+      this.#points = [];
+      this.#destinations = [];
+      this.#offers = [];
+      this.#isLoading = false;
+      throw new Error('Failed to load data');
+    }
+
+    this.#notifyObservers(UpdateType.INIT);
+  }
 
   getPoints(filterType = 'everything') {
     const now = new Date();
@@ -57,19 +80,6 @@ export default class PointModel {
     return this.#offers;
   }
 
-  getDestinationsById(id) {
-    return this.#destinations.find((item) => item.id === id);
-  }
-
-  getOffersByType(type) {
-    return this.#offers.find((item) => item.type === type);
-  }
-
-  getOffersById(type, itemsId) {
-    const offersType = this.getOffersByType(type);
-    return offersType.offers.filter((item) => itemsId.find((id) => item.id === id));
-  }
-
   addObserver(observer) {
     this.#observers.push(observer);
   }
@@ -78,39 +88,37 @@ export default class PointModel {
     this.#observers.forEach((observer) => observer(updateType, data));
   }
 
-  updatePoint(updateType, updatedPoint) {
+  async updatePoint(updateType, updatedPoint) {
     const index = this.#points.findIndex((point) => point.id === updatedPoint.id);
     
     if (index === -1) {
       throw new Error('Can\'t update unexisting point');
     }
     
-    this.#points = [
-      ...this.#points.slice(0, index),
-      updatedPoint,
-      ...this.#points.slice(index + 1)
-    ];
+    try {
+      const response = await this.#apiService.updatePoint(updatedPoint);
+      const adaptedPoint = this.#adaptToClient(response);
+      
+      this.#points = [
+        ...this.#points.slice(0, index),
+        adaptedPoint,
+        ...this.#points.slice(index + 1)
+      ];
 
-    this.#notifyObservers(updateType, updatedPoint);
-  }
-
-  addPoint(updateType, newPoint) {
-    this.#points = [newPoint, ...this.#points];
-    this.#notifyObservers(updateType, newPoint);
-  }
-
-  deletePoint(updateType, deletedPoint) {
-    const index = this.#points.findIndex((point) => point.id === deletedPoint.id);
-    
-    if (index === -1) {
-      throw new Error('Can\'t delete unexisting point');
+      this.#notifyObservers(updateType, adaptedPoint);
+      return adaptedPoint;
+    } catch(err) {
+      throw new Error('Can\'t update point');
     }
-    
-    this.#points = [
-      ...this.#points.slice(0, index),
-      ...this.#points.slice(index + 1)
-    ];
+  }
 
-    this.#notifyObservers(updateType, deletedPoint);
+  #adaptToClient(point) {
+    const adaptedPoint = {
+      ...point,
+      isFavorite: point.isFavorite || false,
+      offers: point.offers || []
+    };
+
+    return adaptedPoint;
   }
 }
