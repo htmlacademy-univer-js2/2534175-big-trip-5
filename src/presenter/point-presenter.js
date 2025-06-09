@@ -11,14 +11,18 @@ const Mode = {
 export default class PointPresenter {
   #container = null;
   #point = null;
+  #destinations = null;
+  #offers = null;
   #mode = Mode.DEFAULT;
   #handleDataChange = null;
   #handleModeChange = null;
   #eventComponent = null;
   #eventEditComponent = null;
 
-  constructor({container, onDataChange, onModeChange}) {
+  constructor({container, destinations, offers, onDataChange, onModeChange}) {
     this.#container = container;
+    this.#destinations = destinations || [];
+    this.#offers = offers || [];
     this.#handleDataChange = onDataChange;
     this.#handleModeChange = onModeChange;
   }
@@ -31,12 +35,16 @@ export default class PointPresenter {
 
     this.#eventComponent = new EventView({
       point: this.#point,
+      destinations: this.#destinations,
+      offers: this.#offers,
       onEditClick: this.#handleEditClick,
       onFavoriteClick: this.#handleFavoriteClick
     });
 
     this.#eventEditComponent = new EventEditView({
       point: this.#point,
+      destinations: this.#destinations,
+      offers: this.#offers,
       onFormSubmit: this.#handleFormSubmit,
       onDeleteClick: this.#handleDeleteClick,
       onCancelClick: this.#handleCancelClick
@@ -66,8 +74,13 @@ export default class PointPresenter {
 
   resetView() {
     if (this.#mode !== Mode.DEFAULT) {
-      this.#eventEditComponent.reset(this.#point);
-      this.#mode = Mode.DEFAULT;
+      this.#replaceFormToEvent();
+    }
+  }
+
+  setAborting() {
+    if (this.#mode === Mode.EDITING) {
+      this.#eventEditComponent.shake();
     }
   }
 
@@ -85,10 +98,9 @@ export default class PointPresenter {
   }
 
   #escKeyDownHandler = (evt) => {
-    if (evt.key === 'Escape') {
+    if (evt.key === 'Escape' || evt.key === 'Esc') {
       evt.preventDefault();
-      this.#eventEditComponent.reset(this.#point);
-      this.#replaceFormToEvent();
+      this.resetView();
     }
   };
 
@@ -97,20 +109,33 @@ export default class PointPresenter {
   };
 
   #handleFavoriteClick = () => {
+    const updatedPoint = {
+      ...this.#point,
+      isFavorite: !this.#point.isFavorite
+    };
+    
     this.#handleDataChange(
       UserAction.UPDATE_POINT,
       UpdateType.PATCH,
-      {...this.#point, isFavorite: !this.#point.isFavorite}
-    );
+      updatedPoint
+    ).catch(() => {
+      this.setAborting();
+    });
   };
 
-  #handleFormSubmit = (point) => {
+  #handleFormSubmit = (update) => {
+    const isMinorUpdate = 
+      this.#point.basePrice !== update.basePrice ||
+      this.#point.dateFrom !== update.dateFrom ||
+      this.#point.dateTo !== update.dateTo;
+
     this.#handleDataChange(
       UserAction.UPDATE_POINT,
-      UpdateType.MINOR,
-      point
-    );
-    this.#replaceFormToEvent();
+      isMinorUpdate ? UpdateType.MINOR : UpdateType.PATCH,
+      update
+    ).catch(() => {
+      this.setAborting();
+    });
   };
 
   #handleDeleteClick = (point) => {
@@ -118,10 +143,12 @@ export default class PointPresenter {
       UserAction.DELETE_POINT,
       UpdateType.MINOR,
       point
-    );
+    ).catch(() => {
+      this.setAborting();
+    });
   };
 
   #handleCancelClick = () => {
-    this.#replaceFormToEvent();
+    this.resetView();
   };
 }
