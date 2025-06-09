@@ -1,5 +1,7 @@
+import {FilterType} from '../const.js';
+
 export default class FiltersModel {
-  #filter = 'everything';
+  #filter = FilterType.EVERYTHING;
   #observers = [];
 
   get filter() {
