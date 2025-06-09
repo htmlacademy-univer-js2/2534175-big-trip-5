@@ -1,7 +1,7 @@
 import { UpdateType } from './const.js';
 
 const AUTHORIZATION = 'Basic eo0w590ik29889b';
-const END_POINT = 'https://21.objects.pages.academy/big-trip';
+const END_POINT = 'https://24.objects.htmlacademy.pro/big-trip';
 
 export default class ApiService {
   #points = [];
@@ -64,7 +64,7 @@ export default class ApiService {
 
   async updatePoint(update) {
     const response = await this.#sendRequest({
-      url: `points/${update.id.replace('#', '')}`,
+      url: `points/${update.id}`,
       method: 'PUT',
       body: JSON.stringify(this.#adaptToServer(update)),
       headers: new Headers({'Content-Type': 'application/json'})
@@ -72,6 +72,25 @@ export default class ApiService {
 
     const updatedPoint = this.#adaptToClient(response);
     return updatedPoint;
+  }
+
+  async addPoint(point) {
+    const response = await this.#sendRequest({
+      url: 'points',
+      method: 'POST',
+      body: JSON.stringify(this.#adaptToServer(point)),
+      headers: new Headers({'Content-Type': 'application/json'})
+    });
+
+    const newPoint = this.#adaptToClient(response);
+    return newPoint;
+  }
+
+  async deletePoint(point) {
+    await this.#sendRequest({
+      url: `points/${point.id}`,
+      method: 'DELETE'
+    });
   }
 
   async #sendRequest({url, method = 'GET', body = null, headers = new Headers()}) {
