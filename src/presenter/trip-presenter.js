@@ -27,6 +27,8 @@ export default class TripPresenter {
     this.#filtersModel = filtersModel;
     this.#newPointButton = newPointButton;
 
+    this.#pointsModel.addObserver(this.#handleModelEvent);
+    this.#filtersModel.addObserver(this.#handleModelEvent);
     this.#newPointButton.addEventListener('click', this.#handleNewPointButtonClick);
   }
 
@@ -35,7 +37,7 @@ export default class TripPresenter {
   }
 
   get points() {
-    this.#filterType = this.#filtersModel.getFilter();
+    this.#filterType = this.#filtersModel.filter;
     const points = this.#pointsModel.getPoints(this.#filterType);
     
     switch (this.#currentSortType) {
@@ -55,18 +57,28 @@ export default class TripPresenter {
 
   #renderTrip() {
     const points = this.points;
-    const filterType = this.#filtersModel.getFilter();
+    const filterType = this.#filtersModel.filter;
 
     this.#clearTrip();
 
-    if (points.length === 0) {
+    if (points.length === 0 && !this.#pointsModel.isLoading) {
       this.#renderNoPoints(filterType);
+      return;
+    }
+
+    if (this.#pointsModel.isLoading) {
+      this.#renderLoading();
       return;
     }
 
     this.#renderSort();
     this.#renderEventList();
     this.#renderPoints(points);
+  }
+
+  #renderLoading() {
+    const loadingTemplate = '<p class="trip-events__msg">Loading...</p>';
+    this.#container.innerHTML = loadingTemplate;
   }
 
   #renderNoPoints(filterType) {
@@ -128,21 +140,43 @@ export default class TripPresenter {
     this.#pointPresenters.forEach((presenter) => presenter.resetView());
   };
 
-  #handleViewAction = (actionType, updateType, update) => {
-    switch (actionType) {
-      case UserAction.UPDATE_POINT:
-        this.#pointsModel.updatePoint(updateType, update);
+  #handleViewAction = async (actionType, updateType, update) => {
+    try {
+      switch (actionType) {
+        case UserAction.UPDATE_POINT:
+          await this.#pointsModel.updatePoint(updateType, update);
+          break;
+        case UserAction.ADD_POINT:
+          await this.#pointsModel.addPoint(updateType, update);
+          break;
+        case UserAction.DELETE_POINT:
+          await this.#pointsModel.deletePoint(updateType, update);
+          break;
+      }
+    } catch (err) {
+      // Обработка ошибки, если нужно
+      console.error('Error handling user action:', err);
+    }
+  };
+
+  #handleModelEvent = (updateType, data) => {
+    switch (updateType) {
+      case UpdateType.PATCH:
+        this.#pointPresenters.get(data.id)?.init(data);
         break;
-      case UserAction.ADD_POINT:
-        this.#pointsModel.addPoint(updateType, update);
+      case UpdateType.MINOR:
+        this.#clearTrip();
+        this.#renderTrip();
         break;
-      case UserAction.DELETE_POINT:
-        this.#pointsModel.deletePoint(updateType, update);
+      case UpdateType.MAJOR:
+        this.#clearTrip({resetSortType: true});
+        this.#renderTrip();
+        break;
+      case UpdateType.INIT:
+        this.#clearTrip();
+        this.#renderTrip();
         break;
     }
-
-    this.#clearTrip();
-    this.#renderTrip();
   };
 
   #handleSortTypeChange = (sortType) => {
@@ -172,6 +206,7 @@ export default class TripPresenter {
     });
 
     this.#eventListComponent.element.prepend(this.#eventCreateComponent.element);
+    document.addEventListener('keydown', this.#escKeyDownHandler);
   };
 
   #handleFormSubmit = (point) => {
@@ -181,6 +216,7 @@ export default class TripPresenter {
       point
     );
     this.#isCreating = false;
+    document.removeEventListener('keydown', this.#escKeyDownHandler);
   };
 
   #handleCancelClick = () => {
@@ -190,7 +226,13 @@ export default class TripPresenter {
       this.#eventCreateComponent.removeElement();
       this.#eventCreateComponent = null;
     }
-    this.#clearTrip();
-    this.#renderTrip();
+    document.removeEventListener('keydown', this.#escKeyDownHandler);
+  };
+
+  #escKeyDownHandler = (evt) => {
+    if (evt.key === 'Escape') {
+      evt.preventDefault();
+      this.#handleCancelClick();
+    }
   };
 }
